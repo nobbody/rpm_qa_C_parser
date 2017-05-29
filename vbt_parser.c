@@ -1,7 +1,7 @@
 /*
- * Module name: VBT parser and re-shuffler
+ * Module name: Video BIOS Table (VBT) parser and re-shuffler
  *
- *** WARNING: this VBT parser and re-shuffler is NOT finished YET! ***
+ *** WARNING: this VBT parser and re-shuffler is NOT done YET! ***
  *
  * Author: _nobody_ (nobodyless@gmail.com)
  * Copyright _nobody_ 2017, GPL3 Licence
@@ -86,8 +86,7 @@ int main(int argc, char *argv[]) {
 	FILE		*infile, *outfile;
 	struct		stat st;
 	char		*in_record, *in_default;
-	uint32_t	i;
-	uint32_t	*size32_ptr = NULL;
+	uint32_t	i, *size32_ptr = NULL;
 	size_t		ifile_size, read_size;
 	uint16_t	*size16_ptr, bdb_block_size;
 	uint8_t		*bdb_block_pointer;
@@ -196,7 +195,7 @@ int main(int argc, char *argv[]) {
 	print_vbt_header_info(&vbt_header);
 
 	// Write to outfile VBT Header content
-	fwrite(&in_default[i], sizeof(vbt_header), sizeof(char), outfile);
+	fwrite(&in_default[i], vbt_header.vbt_header_size, sizeof(char), outfile);
 
 	// Find BDB Header
 	i = vbt_header.bdb_offset;
@@ -259,36 +258,48 @@ int main(int argc, char *argv[]) {
 		in_record++;
 	}
 	in_record += 3;
-	// FAKE CALCULATION end
+	// FAKE CALCULATION ends here
 
-	// Fill the found BDB record
+	// Fill the BDB record, found in the vbt.dat file
 	index = *in_record++;
 	while (0 != index) {
 		bdb_block_header[index].record_index = index;
 		bdb_block_header[index].populated = 'Y';
 		size16_ptr = (uint16_t *)in_record;
 		bdb_block_header[index].bdb_block_size = bdb_block_size = *size16_ptr;
-		in_record++;
-		in_record++;
 		// Allocate infile size characters to the in_record
-		// bdb_block_pointer = (uint8_t *)malloc(bdb_block_size);
+		bdb_block_pointer = (uint8_t *)malloc(bdb_block_size + 3);
 		bdb_block_header[index].bdb_block_pointer = bdb_block_pointer;
+		in_record--;
+		// Copy the entire BDB record including record index and body size
+		for (i = 0; i < (bdb_block_size + 3); i++) *bdb_block_pointer++ = *in_record++;
 
-		// TEST Printing of the found BDB record
+#if 1 // TEST Printing of the found BDB record
 		print_bdb_block_header_info(&bdb_block_header[index]);
+		bdb_block_pointer -= bdb_block_size + 3;
 		printf("The BDB Block body is:");
-		for (i = 0; i < bdb_block_size; i++) {
-			printf(" %02x", (uint8_t)*in_record);
-			in_record++;
+		for (i = 0; i < bdb_block_size + 3; i++) {
+			printf(" %02x", *bdb_block_pointer);
+			bdb_block_pointer++;
 		}
 		printf("\n");
+#endif
 
 		index = *in_record++;
 	}
-	// Write to outfile BDB Header content
-	// fwrite(in_default, 8, sizeof(char), outfile);
 
-	free (in_default);
+	// Traverse the BDB record database, and store BDB records in proper order in outfile
+	for (i = 0; i < 256; i++) {
+		if ('Y' == bdb_block_header[i].populated) {
+			printf(" %d", bdb_block_header[i].record_index);
+			// Write to outfile BDB entire block recordcontent
+			fwrite(bdb_block_header[i].bdb_block_pointer, bdb_block_header[i].bdb_block_size, sizeof(char), outfile);
+			free(bdb_block_header[i].bdb_block_pointer);
+		}
+	}
+	printf("\n");
+
+	free(in_default);
 	fclose(infile);
 	fclose(outfile);
 	return (0);
