@@ -53,8 +53,8 @@ struct bdb_hdr {
 };
 
 struct bdb_block_hdr {
-	char		populated;
-	uint8_t		record_index;
+	char		found;
+	uint8_t		record_id;
 	uint16_t	bdb_block_size;
 	uint8_t		*bdb_block_pointer;
 };
@@ -77,7 +77,7 @@ void print_bdb_header_info(struct bdb_hdr *bh) {
 
 void print_bdb_block_header_info(struct bdb_block_hdr *bh) {
 	printf("----------------------------------------------\n");
-	printf("BDB Block Record Index is: %8x [%d]\n", bh->record_index, bh->record_index);
+	printf("BDB Block Record Id is: %8x [%d]\n", bh->record_id, bh->record_id);
 	printf("BDB Block Size is: %8x [%d]\n", bh->bdb_block_size, bh->bdb_block_size);
 	printf("BDB Block Pointer is: [%p]\n", bh->bdb_block_pointer);
 }
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
 	size_t		ifile_size, read_size;
 	uint16_t	*size16_ptr, bdb_block_size;
 	uint8_t		*bdb_block_pointer;
-	uint8_t		index, first_bdb_set[] = {0x01, 0x00, 0x00, 0x01};
+	uint8_t		record_id;
 
 	struct vbt_hdr		vbt_header;
 	struct bdb_hdr		bdb_header;
@@ -252,31 +252,24 @@ int main(int argc, char *argv[]) {
 	/*
 	 *  [Task 3] - Find and parse all BDB Blocks!
 	 */
-	// FAKE CALCULATION (To BE Determined) look for the first BDB block
-	for (i; i + 4 < ifile_size; i++) {
-		if (!memcmp(in_record, (char *)first_bdb_set, 4)) break;
-		in_record++;
-	}
-	in_record += 3;
-	// FAKE CALCULATION ends here
 
 	// Fill the BDB record, found in the vbt.dat file
-	index = *in_record++;
-	while (0 != index) {
-		bdb_block_header[index].record_index = index;
-		bdb_block_header[index].populated = 'Y';
+	record_id = *in_record++;
+	while (0 != record_id) {
+		bdb_block_header[record_id].record_id = record_id;
+		bdb_block_header[record_id].found = 'Y';
 		size16_ptr = (uint16_t *)in_record;
-		bdb_block_header[index].bdb_block_size = bdb_block_size = *size16_ptr;
+		bdb_block_header[record_id].bdb_block_size = bdb_block_size = *size16_ptr;
 		// Allocate infile size characters to the in_record
 		bdb_block_pointer = (uint8_t *)malloc(bdb_block_size + 3);
-		bdb_block_header[index].bdb_block_pointer = bdb_block_pointer;
+		bdb_block_header[record_id].bdb_block_pointer = bdb_block_pointer;
 		in_record--;
-		// Copy the entire BDB record including record index and body size
+		// Copy the entire BDB record including record id and body size
 		for (i = 0; i < (bdb_block_size + 3); i++) *bdb_block_pointer++ = *in_record++;
 
 #if 1 // TEST Printing of the found BDB record
-		print_bdb_block_header_info(&bdb_block_header[index]);
-		bdb_block_pointer -= bdb_block_size + 3;
+		print_bdb_block_header_info(&bdb_block_header[record_id]);
+		bdb_block_pointer = bdb_block_header[record_id].bdb_block_pointer;
 		printf("The BDB Block body is:");
 		for (i = 0; i < bdb_block_size + 3; i++) {
 			printf(" %02x", *bdb_block_pointer);
@@ -285,15 +278,15 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 #endif
 
-		index = *in_record++;
+		record_id = *in_record++;
 	}
 
 	// Traverse the BDB record database, and store BDB records in proper order in outfile
 	for (i = 0; i < 256; i++) {
-		if ('Y' == bdb_block_header[i].populated) {
-			printf(" %d", bdb_block_header[i].record_index);
+		if ('Y' == bdb_block_header[i].found) {
+		  printf("%d ", bdb_block_header[i].record_id);
 			// Write to outfile BDB entire block recordcontent
-			fwrite(bdb_block_header[i].bdb_block_pointer, bdb_block_header[i].bdb_block_size, sizeof(char), outfile);
+			fwrite(bdb_block_header[i].bdb_block_pointer, bdb_block_header[i].bdb_block_size +3, sizeof(char), outfile);
 			free(bdb_block_header[i].bdb_block_pointer);
 		}
 	}
